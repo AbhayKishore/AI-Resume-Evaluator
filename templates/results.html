@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Unified Resume Analysis Dashboard</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background-color: #f5f7fb;
+      padding-bottom: 80px;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .dashboard-container {
+      max-width: 1140px;
+    }
+
+    /* unified card look for all sections */
+    .dashboard-card {
+      background: #ffffff;
+      border-radius: 1rem;
+      padding: 1.75rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      width: 100%;
+      margin-bottom: 1.75rem;
+    }
+
+    .section-title {
+      font-weight: 600;
+      font-size: 0.98rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .chart-container {
+      max-width: 380px;
+      margin: auto;
+      height: 220px;
+    }
+
+    .chart-canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
+    .resume-text {
+      white-space: pre-wrap;
+      max-height: 260px;
+      overflow-y: auto;
+      border-radius: 0.6rem;
+      border: 1px solid #e0e4f0;
+      padding: 1rem;
+      background-color: #fff;
+      font-size: 0.9rem;
+    }
+
+    .hidden { display: none !important; }
+
+    /* meta badges */
+    .meta-pill {
+      font-size: 0.85rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+    }
+
+    .badge.bg-warning {
+      background-color: #ffce3a !important;
+      color: #222 !important;
+    }
+    .bg-dark .badge.bg-warning {
+      background-color: #ffdf6a !important;
+      color: #111 !important;
+    }
+
+    /* equal height rows for side-by-side sections */
+    .equal-row > [class^="col-"],
+    .equal-row > [class*=" col-"] {
+      display: flex;
+    }
+    .equal-row .dashboard-card {
+      flex: 1 1 auto;
+    }
+
+    /* dark mode base */
+    .bg-dark {
+      background-color: #101623 !important;
+      color: #f8f9ff !important;
+    }
+
+    .bg-dark .dashboard-card {
+      background-color: #151b2b;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+    }
+
+    .bg-dark .resume-text {
+      background-color: #111827;
+      border-color: #1f2937;
+      color: #e5e7eb;
+    }
+
+    #themeToggle {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      z-index: 1200;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 768px) {
+      .chart-container {
+        max-width: 320px;
+        height: 200px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container py-4 dashboard-container">
+
+    <!-- Recruiter / Candidate View Toggle -->
+    <div class="d-flex justify-content-end mb-3">
+      <div class="btn-group btn-group-sm" role="group" aria-label="View toggle">
+        <button class="btn btn-outline-primary" id="recruiter-view" type="button">Recruiter view</button>
+        <button class="btn btn-outline-secondary" id="candidate-view" type="button">Candidate view</button>
+      </div>
+    </div>
+
+    <!-- HEADER -->
+    <div class="text-center mb-4">
+      <h1 class="fw-semibold mb-2">Resume Analysis Dashboard</h1>
+      <p class="lead text-muted mb-0" style="font-size: 1rem;">
+        Resume-to-job match evaluation and ATS-oriented insights.
+      </p>
+    </div>
+
+    <!-- ERROR HANDLING -->
+    {% if analysis.error %}
+    <div class="alert alert-danger text-center" role="alert">
+      <strong>Error:</strong> {{ analysis.error }}
+    </div>
+    {% endif %}
+
+    <!-- SUMMARY + SCORE (TARGET ROLE) -->
+    <div class="dashboard-card text-center">
+      <h3 class="h5 mb-1">Target role</h3>
+      <p class="mb-3 text-muted">
+        {{ analysis.desired_job or 'General role' }}
+      </p>
+
+      <p class="mb-3">
+        Overall match:
+        <span class="fw-semibold">{{ analysis.ats_score if analysis.ats_score is not none else 0 }}%</span>
+      </p>
+
+      <div class="row justify-content-center g-4 mb-2">
+        <div class="col-md-5">
+          <div class="chart-container" role="img" aria-label="ATS score chart">
+            <canvas id="scoreChart" class="chart-canvas"></canvas>
+          </div>
+        </div>
+
+        <div class="col-md-7">
+          <div class="chart-container" style="max-width:520px; height:220px;" role="img" aria-label="ATS breakdown chart">
+            <canvas id="atsChart" class="chart-canvas" width="520" height="220"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick meta indicators -->
+      <div class="mt-3 d-flex flex-wrap justify-content-center gap-2">
+        <span class="meta-pill bg-warning shadow-sm">
+          🧠 AI risk: <strong>{{ analysis.ai_risk.ai_risk_score }}%</strong>
+        </span>
+        <span class="meta-pill bg-light border text-muted">
+          📄 Language: <strong>{{ analysis.language|upper }}</strong>
+        </span>
+        <span class="meta-pill bg-info-subtle text-info-emphasis shadow-sm">
+          🧬 Local score: <strong>{{ analysis.ai_risk.local }}%</strong>
+        </span>
+      </div>
+
+      <!-- AI Detection Explanation -->
+      {% if analysis.ai_risk %}
+      <div class="alert alert-warning shadow-sm mt-3 mx-auto" style="max-width: 750px; text-align:left;">
+        <div class="fw-semibold mb-1">AI detection details</div>
+        {% if analysis.ai_risk.model_reason %}
+        <div style="font-size: 0.9rem;">
+          {{ analysis.ai_risk.model_reason }}
+        </div>
+        {% endif %}
+      </div>
+      <div class="text-muted" style="font-size:0.8rem; line-height:1.4;">
+          <strong>Local score interpretation:</strong><br>
+          0–20 → strongly human /
+          20–45 → mild AI-like patterns /
+          45–70 → suspicious /
+          70–100 → likely AI-generated 
+        </div>
+      {% endif %}
+    </div>
+    <!-- PROFILE + SKILLS / EXPERIENCE (two columns) -->
+    <div class="row g-2 equal-row">
+      <div class="col-lg-12">
+                <div class="dashboard-card">
+          <div class="section-title text-primary">Profile summary</div>
+          <p class="mb-0">
+            {{ analysis.summary or 'No summary available.' }}
+          </p>
+        </div>
+      </div>
+      <div class="col-lg-12">
+        <div class="dashboard-card">
+          <div class="section-title text-success">Skills & experience</div>
+
+          <h6 class="fw-semibold mb-2">Technical skills</h6>
+          <ul class="list-group list-group-flush mb-3" id="skills-list">
+            {% if analysis.skills %}
+              {% for skill in analysis.skills %}
+              <li class="list-group-item small">{{ skill }}</li>
+              {% endfor %}
+            {% else %}
+              <li class="list-group-item small">No skills identified.</li>
+            {% endif %}
+          </ul>
+
+          <h6 class="fw-semibold mb-2">Experience areas</h6>
+          <ul class="list-group list-group-flush" id="experience-list">
+            {% if analysis.experience %}
+              {% for exp in analysis.experience %}
+              <li class="list-group-item small">{{ exp }}</li>
+              {% endfor %}
+            {% else %}
+              <li class="list-group-item small">No experience items parsed.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDUCATION & ACHIEVEMENTS -->
+    <div class="row g-4 equal-row">
+      <div class="col-lg-6">
+        <div class="dashboard-card">
+          <div class="section-title text-info">Education</div>
+          <ul class="list-group list-group-flush mb-0" id="education-list">
+            {% if analysis.education %}
+              {% for edu in analysis.education %}
+              <li class="list-group-item small">{{ edu }}</li>
+              {% endfor %}
+            {% else %}
+              <li class="list-group-item small">No education items detected.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="dashboard-card">
+          <div class="section-title text-warning">Honors & awards</div>
+          <ul class="list-group list-group-flush mb-0" id="awards-list">
+            {% if analysis.honors_awards %}
+              {% for award in analysis.honors_awards %}
+              <li class="list-group-item small">{{ award }}</li>
+              {% endfor %}
+            {% else %}
+              <li class="list-group-item small">No honors or awards detected.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- CANDIDATE-ONLY: Courses + Job opportunities -->
+    <div class="row g-4 equal-row candidate-only">
+      <div class="col-lg-6">
+        <div class="dashboard-card">
+          <div class="section-title text-success">Recommended courses</div>
+          {% if analysis.course_recommendations %}
+            {% for rec in analysis.course_recommendations %}
+            <div class="mb-3">
+              <strong>{{ rec.skill }}</strong>
+              <ul class="mb-1 small">
+                {% for course in rec.courses %}
+                <li>{{ course }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="small">No course recommendations available.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="dashboard-card">
+          <div class="section-title text-info">Current job opportunities</div>
+          <ul class="list-group list-group-flush mb-0">
+            {% if analysis.job_matches %}
+              {% for job in analysis.job_matches %}
+              <li class="list-group-item small">
+                <strong>{{ job.job_title }}</strong> — {{ job.reasoning }}
+              </li>
+              {% endfor %}
+            {% else %}
+              <li class="list-group-item small">No job matches found.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- CANDIDATE-ONLY: Improvement tips + Keywords -->
+    <div class="row g-4 equal-row candidate-only">
+      <div class="col-lg-6">
+        <div class="dashboard-card">
+          <div class="section-title text-body">Improvement tips</div>
+          <ul class="list-group list-group-flush mb-0">
+            {% if analysis.ats_feedback %}
+              {% for tip in analysis.ats_feedback %}
+              <li class="list-group-item small">{{ tip }}</li>
+              {% endfor %}
+            {% else %}
+              <li class="list-group-item small">No specific improvement tips available.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="dashboard-card">
+          <div class="section-title text-warning">Suggested keywords to add</div>
+          {% if analysis.missing_keywords and analysis.missing_keywords|length > 0 %}
+          <p class="mb-2 small">
+            Based on the job description, you may consider integrating the following
+            keywords into your resume <strong>only where they are factually correct</strong>:
+          </p>
+
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            {% for kw in analysis.missing_keywords %}
+            <span class="badge rounded-pill bg-light text-dark border px-3 py-2">
+              {{ kw }}
+            </span>
+            {% endfor %}
+          </div>
+
+          <p class="mb-0 small text-muted">
+            Tip: weave these terms into your experience bullets, skill section,
+            and profile summary rather than listing them in isolation.
+          </p>
+          {% else %}
+          <p class="small mb-0">No critical missing keywords detected for this job description.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- RAW RESUME TEXT -->
+    <div class="dashboard-card">
+      <div class="section-title text-secondary">Raw resume text (reference)</div>
+      <div class="resume-text" id="raw-resume">{{ analysis.resume_text }}</div>
+    </div>
+
+    <!-- BUTTON GROUP -->
+    <div class="button-group">
+      <a href="/preview-report" class="btn btn-outline-primary flex-fill">Preview PDF report</a>
+      <!-- Currently Disabled</a> -->
+<!-- <a href="/generate-resume" class="btn btn-outline-success flex-fill">Download draft resume (.docx)</a> -->
+      <a href="/" class="btn btn-outline-secondary flex-fill">⬅ Back to home</a>
+    </div>
+  </div>
+
+  <!-- DARK MODE BUTTON -->
+  <button class="btn btn-sm btn-outline-secondary" id="themeToggle" aria-pressed="false">🌙 Dark mode</button>
+
+  <!-- DATA -->
+  <script>
+    const analysisData = {{ analysis|tojson|safe }};
+  </script>
+
+  <!-- BEHAVIOUR -->
+  <script>
+    // Dark mode
+    const body = document.body;
+    const themeToggle = document.getElementById('themeToggle');
+    function applyDarkMode(enabled) {
+      if (enabled) {
+        body.classList.add('bg-dark', 'text-white');
+        themeToggle.textContent = '☀️ Light mode';
+        themeToggle.setAttribute('aria-pressed', 'true');
+      } else {
+        body.classList.remove('bg-dark', 'text-white');
+        themeToggle.textContent = '🌙 Dark mode';
+        themeToggle.setAttribute('aria-pressed', 'false');
+      }
+    }
+    try {
+      const savedDark = localStorage.getItem('resume_dark_mode');
+      applyDarkMode(savedDark === 'true');
+    } catch (e) {}
+
+    themeToggle.addEventListener('click', () => {
+      const isDark = body.classList.contains('bg-dark');
+      applyDarkMode(!isDark);
+      try { localStorage.setItem('resume_dark_mode', (!isDark).toString()); } catch(e) {}
+    });
+
+    // View toggle
+    const recruiterBtn = document.getElementById('recruiter-view');
+    const candidateBtn = document.getElementById('candidate-view');
+    const candidateSections = Array.from(document.querySelectorAll('.candidate-only'));
+
+    function setView(view) {
+      if (view === 'candidate') {
+        candidateBtn.classList.add('active');
+        recruiterBtn.classList.remove('active');
+        candidateSections.forEach(s => s.classList.remove('hidden'));
+      } else {
+        recruiterBtn.classList.add('active');
+        candidateBtn.classList.remove('active');
+        candidateSections.forEach(s => s.classList.add('hidden'));
+      }
+      try { localStorage.setItem('resume_view', view); } catch (e) {}
+    }
+    recruiterBtn.addEventListener('click', () => setView('recruiter'));
+    candidateBtn.addEventListener('click', () => setView('candidate'));
+
+    // Charts
+    function initCharts() {
+      // Score chart
+      const scoreCanvas = document.getElementById('scoreChart');
+      if (scoreCanvas && typeof Chart !== 'undefined') {
+        const atsScore = Number(analysisData.ats_score ?? 0);
+        const ctx = scoreCanvas.getContext('2d');
+
+        if (scoreCanvas._chartInstance) {
+          try { scoreCanvas._chartInstance.destroy(); } catch(e) {}
+        }
+
+        const clamped = Math.max(0, Math.min(100, atsScore));
+        try {
+          const chart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              datasets: [{
+                data: [clamped, 100 - clamped],
+                backgroundColor: ['#198754', '#e5e7eb'],
+                borderWidth: 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              rotation: -90,
+              circumference: 180,
+              cutout: '70%',
+              plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false }
+              }
+            },
+            plugins: [{
+              id: 'centerText',
+              afterDraw: (chart) => {
+                const { ctx, chartArea } = chart;
+                if (!chartArea) return;
+                const width = chartArea.right - chartArea.left;
+                const height = chartArea.bottom - chartArea.top;
+                ctx.save();
+                ctx.font = '600 22px system-ui, sans-serif';
+                ctx.fillStyle = '#198754';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${clamped}/100`, chartArea.left + width / 2, chartArea.top + height / 2 + 18);
+                ctx.restore();
+              }
+            }]
+          });
+          scoreCanvas._chartInstance = chart;
+        } catch (err) {
+          console.warn('Failed to init score chart', err);
+        }
+      }
+
+      // ATS breakdown bar chart
+      const atsChartCanvas = document.getElementById('atsChart');
+      if (atsChartCanvas && typeof Chart !== 'undefined') {
+        if (atsChartCanvas._chartInstance) {
+          try { atsChartCanvas._chartInstance.destroy(); } catch(e) {}
+        }
+        try {
+          const breakdown = analysisData.ats_breakdown || {};
+          const ctx2 = atsChartCanvas.getContext('2d');
+          const chart2 = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+              labels: ['Technical skills', 'Soft skills', 'Experience'],
+              datasets: [{
+                data: [
+                  Number(breakdown.technical || 0),
+                  Number(breakdown.soft || 0),
+                  Number(breakdown.experience || 0)
+                ],
+                backgroundColor: ['#0d6efd', '#198754', '#ffc107']
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                y: { beginAtZero: true, max: 100 }
+              },
+              plugins: {
+                legend: { display: false },
+                title: { display: true, text: 'ATS component breakdown' }
+              }
+            }
+          });
+          atsChartCanvas._chartInstance = chart2;
+        } catch (err) {
+          console.warn('Failed to init ats chart', err);
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const savedView = (localStorage.getItem('resume_view') || '').toLowerCase();
+        if (savedView === 'candidate') setView('candidate'); else setView('recruiter');
+      } catch (e) { setView('recruiter'); }
+
+      if (!analysisData ||
+          (!analysisData.course_recommendations?.length &&
+           !analysisData.job_matches?.length &&
+           !analysisData.alternative_paths?.length &&
+           !analysisData.ats_feedback?.length)) {
+        setView('recruiter');
+      }
+
+      initCharts();
+    });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

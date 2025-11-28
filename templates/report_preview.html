@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Analysis Report Preview</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body { background-color: #fff; padding: 2rem; }
+        .report-section { margin-bottom: 2rem; }
+        h2 {
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+        .checkbox-label { font-size: 0.9rem; margin-left: 6px; color: #555; }
+
+        /* Hide controls when printing */
+        @media print {
+            .no-print,
+            input[type="checkbox"],
+            .checkbox-label {
+                display: none !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #f1f1f1;
+            margin-right: 6px;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ACTION BUTTON GROUP (same style as view toggle) -->
+    <div class="container no-print">
+        <div class="d-flex justify-content-end mb-4">
+            <div class="btn-group" role="group" aria-label="Report actions">
+                <a href="/results" class="btn btn-outline-secondary">
+                    ⬅️ Back
+                </a>
+                <button
+                    type="button"
+                    class="btn btn-outline-primary"
+                    onclick="window.print()">
+                    🖨️ Print / Save as PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <div class="container">
+        <h1 class="text-center mb-4">AI Resume Analysis Report</h1>
+        <p class="text-center text-muted">{{ analysis.desired_job or 'General Role' }}</p>
+
+        <!-- AI RISK DETAILS -->
+        <div class="report-section" id="section-ai-risk">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-ai-risk" checked>
+                AI Detection Details
+            </h2>
+            {% if analysis.ai_risk %}
+                <p><strong>Overall AI Risk Score:</strong> {{ analysis.ai_risk.ai_risk_score }}%</p>
+                <p><strong>Local Score:</strong> {{ analysis.ai_risk.local }}%</p>
+            {% else %}
+                <p>No AI risk details available.</p>
+            {% endif %}
+            {% if analysis.language %}
+                <p><strong>Detected Language:</strong> {{ analysis.language|upper }}</p>
+            {% endif %}
+            {% if analysis.ai_risk and analysis.ai_risk.model_reason %}
+                <p><strong>Model Explanation:</strong> {{ analysis.ai_risk.model_reason }}</p>
+            {% endif %}
+        </div>
+
+        <!-- PROFILE SUMMARY -->
+        <div class="report-section" id="section-summary">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-summary" checked>
+                Profile Summary
+            </h2>
+            <p>{{ analysis.summary }}</p>
+        </div>
+
+        <!-- SKILLS -->
+        <div class="report-section" id="section-skills">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-skills" checked>
+                Skills
+            </h2>
+            <ul>
+                {% for skill in analysis.skills %}
+                <li>{{ skill }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- EDUCATION -->
+        <div class="report-section" id="section-education">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-education" checked>
+                Education
+            </h2>
+            <ul>
+                {% for edu in analysis.education %}
+                <li>{{ edu }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- ACHIEVEMENTS / HONORS & AWARDS -->
+        <div class="report-section" id="section-achievements">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-achievements" checked>
+                Achievements, Honors & Awards
+            </h2>
+            <ul>
+                {% if analysis.achievements %}
+                    {% for item in analysis.achievements %}
+                        <li>{{ item }}</li>
+                    {% endfor %}
+                {% elif analysis.honors_awards %}
+                    {% for award in analysis.honors_awards %}
+                        <li>{{ award }}</li>
+                    {% endfor %}
+                {% else %}
+                    <li>No achievements, honors or awards detected.</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <!-- EXPERIENCE -->
+        <div class="report-section" id="section-experience">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-experience" checked>
+                Experience
+            </h2>
+            <ul>
+                {% for exp in analysis.experience %}
+                <li>{{ exp }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- ATS MATCH -->
+        <div class="report-section" id="section-ats">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-ats" checked>
+                ATS Match
+            </h2>
+            <p><strong>Score:</strong> {{ analysis.ats_score }}%</p>
+            <p><strong>Missing Keywords (raw):</strong> {{ analysis.missing_keywords|join(', ') }}</p>
+
+            <h6>ATS Breakdown:</h6>
+            <ul>
+                <li><strong>Technical Skills:</strong> {{ analysis.ats_breakdown.technical }}%</li>
+                <li><strong>Soft Skills:</strong> {{ analysis.ats_breakdown.soft }}%</li>
+                <li><strong>Experience Match:</strong> {{ analysis.ats_breakdown.experience }}%</li>
+            </ul>
+
+            <h6>Feedback:</h6>
+            <ul>
+                {% for feedback in analysis.ats_feedback %}
+                <li>{{ feedback }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- SUGGESTED KEYWORDS TO ADD -->
+        <div class="report-section" id="section-suggested-keywords">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-suggested-keywords" checked>
+                Suggested Keywords to Add
+            </h2>
+
+            {% if analysis.missing_keywords and analysis.missing_keywords|length > 0 %}
+                <p>
+                    Based on the job description, the following keywords are
+                    <strong>underrepresented or missing</strong> in the resume.
+                    They should only be added where they accurately reflect the candidate’s
+                    real skills and experience.
+                </p>
+
+                <div class="mb-3">
+                    {% for kw in analysis.missing_keywords %}
+                        <span class="pill">{{ kw }}</span>
+                    {% endfor %}
+                </div>
+
+                <p style="font-size: 0.9rem;">
+                    Recommendation: Integrate these terms into the
+                    <em>skills section</em>, <em>experience bullets</em>,
+                    and, where appropriate, the <em>profile summary</em>, instead of listing them in isolation.
+                </p>
+            {% else %}
+                <p>No critical missing keywords detected for the provided job description.</p>
+            {% endif %}
+        </div>
+
+        <!-- MISSING SKILLS -->
+        <div class="report-section" id="section-missing-skills">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-missing-skills" checked>
+                Missing Skills
+            </h2>
+            <ul>
+                {% for skill in analysis.missing_skills %}
+                <li>{{ skill }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- COURSE RECOMMENDATIONS -->
+        <div class="report-section" id="section-courses">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-courses" checked>
+                Course Recommendations
+            </h2>
+            {% for rec in analysis.course_recommendations %}
+            <p><strong>{{ rec.skill }}</strong></p>
+            <ul>
+                {% for course in rec.courses %}
+                <li>{{ course }}</li>
+                {% endfor %}
+            </ul>
+            {% endfor %}
+        </div>
+
+        <!-- JOB MATCHES / OPPORTUNITIES -->
+        <div class="report-section" id="section-job-matches">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-job-matches" checked>
+                Job Matches & Opportunities
+            </h2>
+            <ul>
+                {% if analysis.job_matches %}
+                    {% for job in analysis.job_matches %}
+                        <li><strong>{{ job.job_title }}</strong> — {{ job.reasoning }}</li>
+                    {% endfor %}
+                {% else %}
+                    <li>No job matches generated.</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <!-- FULL RESUME TEXT -->
+        <div class="report-section" id="section-resume-text">
+            <h2>
+                <input type="checkbox" class="section-toggle" data-section="section-resume-text" checked>
+                Full Resume Text (Reference)
+            </h2>
+            <pre>{{ analysis.resume_text }}</pre>
+        </div>
+    </div>
+
+    <script>
+        // Toggle visibility of report sections for printing
+        document.querySelectorAll('.section-toggle').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const section = document.getElementById(this.dataset.section);
+                if (this.checked) {
+                    section.classList.remove('no-print');
+                } else {
+                    section.classList.add('no-print');
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
